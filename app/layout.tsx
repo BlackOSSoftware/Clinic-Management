@@ -8,9 +8,8 @@ import { Suspense } from "react"
 import ClientShell from "@/components/client-shell"
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
-  generator: "v0.app",
+  title: "Clinic Management",
+  description: "Created By BlackOS Software Solution",
 }
 
 export default function RootLayout({
