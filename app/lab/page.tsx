@@ -10,9 +10,10 @@ import Link from "next/link"
 import { useAuth } from "@/lib/auth"
 
 export default function LabPage() {
-  const { store, addLabTest, deleteLabTest, addLabRecord } = useHCMS()
+  const { store, addLabTest, deleteLabTest, addLabRecord, updateLabRecord } = useHCMS()
   const { role } = useAuth()
   const isReception = role === "reception"
+
   const [name, setName] = useState("")
   const [price, setPrice] = useState("")
   const [labTestId, setLabTestId] = useState(store.labTests[0]?.id ?? "")
@@ -26,6 +27,8 @@ export default function LabPage() {
   const [dateStr, setDateStr] = useState(today)
   const [timeStr, setTimeStr] = useState(currentTime)
 
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
+
   function saveTest() {
     if (!name || !price) return
     addLabTest({ name, price: Number(price) })
@@ -33,13 +36,51 @@ export default function LabPage() {
     setPrice("")
   }
 
-  function addRecord() {
+  function saveRecord() {
     if (!labTestId) return
     const iso = dateStr && timeStr ? new Date(`${dateStr}T${timeStr}:00`).toISOString() : undefined
-    addLabRecord(labTestId, patientId || undefined, patientName || undefined, iso, doctorId || undefined)
+
+    if (editingRecordId) {
+      updateLabRecord(editingRecordId, {
+        labTestId,
+        patientId: patientId || undefined,
+        patientName: patientName || undefined,
+        doctorId: doctorId || undefined,
+        dateISO: iso,
+      })
+      setEditingRecordId(null)
+    } else {
+      addLabRecord(labTestId, patientId || undefined, patientName || undefined, iso, doctorId || undefined)
+    }
+
     setPatientId("")
     setPatientName("")
     setDoctorId("")
+    setLabTestId(store.labTests[0]?.id ?? "")
+  }
+
+  function editRecord(record: any) {
+    setEditingRecordId(record.id)
+    setLabTestId(record.labTestId)
+    setPatientId(record.patientId || "")
+    setPatientName(record.patientName || "")
+    setDoctorId(record.doctorId || "")
+
+    const dt = new Date(record.dateISO)
+    setDateStr(dt.toISOString().slice(0, 10))
+    setTimeStr(dt.toTimeString().slice(0, 5))
+  }
+
+  function formatDate(isoString: string) {
+    const date = new Date(isoString)
+    const day = String(date.getDate()).padStart(2, "0")
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const year = date.getFullYear()
+    const hours = date.getHours()
+    const minutes = String(date.getMinutes()).padStart(2, "0")
+    const ampm = hours >= 12 ? "PM" : "AM"
+    const displayHours = hours % 12 || 12
+    return `${day}/${month}/${year} ${displayHours}:${minutes} ${ampm}`
   }
 
   return (
@@ -82,7 +123,7 @@ export default function LabPage() {
       )}
 
       <Card className="rounded-xl p-4 shadow-sm">
-        <div className="mb-3 font-semibold">Add Lab Record</div>
+        <div className="mb-3 font-semibold">{editingRecordId ? "Edit Lab Record" : "Add Lab Record"}</div>
         <div className="grid grid-cols-1 gap-3">
           <div>
             <Label>Lab Test</Label>
@@ -98,6 +139,7 @@ export default function LabPage() {
               ))}
             </select>
           </div>
+
           <div>
             <Label>Attach to Patient (optional)</Label>
             <select
@@ -113,6 +155,7 @@ export default function LabPage() {
               ))}
             </select>
           </div>
+
           <div>
             <Label>Doctor (optional)</Label>
             <select
@@ -128,10 +171,12 @@ export default function LabPage() {
               ))}
             </select>
           </div>
+
           <div>
             <Label>Custom Patient Name (optional)</Label>
             <Input value={patientName} onChange={(e) => setPatientName(e.target.value)} placeholder="e.g. Sita Devi" />
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Record Date</Label>
@@ -142,9 +187,25 @@ export default function LabPage() {
               <Input type="time" value={timeStr} onChange={(e) => setTimeStr(e.target.value)} />
             </div>
           </div>
-          <Button className="bg-accent text-accent-foreground hover:opacity-90" onClick={addRecord}>
-            Save Record
+
+          <Button className="bg-accent text-accent-foreground hover:opacity-90" onClick={saveRecord}>
+            {editingRecordId ? "Update Record" : "Save Record"}
           </Button>
+
+          {editingRecordId && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditingRecordId(null)
+                setPatientId("")
+                setPatientName("")
+                setDoctorId("")
+                setLabTestId(store.labTests[0]?.id ?? "")
+              }}
+            >
+              Cancel Edit
+            </Button>
+          )}
         </div>
 
         <div className="mt-6">
@@ -155,19 +216,24 @@ export default function LabPage() {
               const p = store.patients.find((x) => x.id === r.patientId)
               const d = store.doctors.find((x) => x.id === r.doctorId)
               const displayName = p?.name || r.patientName || "(General)"
-              const dateLabel = new Date(r.dateISO).toLocaleString()
+              const dateLabel = formatDate(r.dateISO)
               return (
                 <div key={r.id} className="flex items-center justify-between border-b border-border px-3 py-2 text-sm">
                   <div className="truncate">
                     {t?.name} → {displayName} — ₹{r.total} • {dateLabel}
                     {d ? <span className="ml-2 text-xs text-muted-foreground">({d.name})</span> : null}
                   </div>
-                  <Link
-                    href={`/print/receipt?kind=lab&id=${r.id}`}
-                    className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
-                  >
-                    Print Receipt
-                  </Link>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => editRecord(r)}>
+                      Edit
+                    </Button>
+                    <Link
+                      href={`/print/receipt?kind=lab&id=${r.id}`}
+                      className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
+                    >
+                      Print Receipt
+                    </Link>
+                  </div>
                 </div>
               )
             })}

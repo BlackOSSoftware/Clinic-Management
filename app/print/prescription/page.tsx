@@ -37,20 +37,28 @@ export default function PrintPrescriptionPage() {
               </div>
             </div>
             <div className="text-right text-sm">
-              <div className="font-medium">{doctor?.name || "Doctor"}</div>
+              <div className="font-medium">{doctor?.name || "Doctor"} <br /> {doctor?.degree}</div>
               <div className="text-muted-foreground">{doctor?.specialization || "Specialist"}</div>
             </div>
           </div>
         </header>
 
-        <section className="grid grid-cols-2 gap-3 text-sm">
+        <section className="grid grid-cols-2 gap-3 text-sm capitalize">
           <div>
             <div className="font-medium">Patient</div>
-            <div>{patient ? `${patient.name} (Age ${patient.age})` : "—"}</div>
+            <div>Name - {patient ? `${patient.name} (Age ${patient.age})` : "—"} <br /> Gender-{patient?.gender} </div>
           </div>
           <div>
             <div className="font-medium">Date</div>
-            <div>{new Date().toLocaleDateString()}</div>
+            <div>
+              {(() => {
+                const d = new Date();
+                const day = String(d.getDate()).padStart(2, "0");
+                const month = String(d.getMonth() + 1).padStart(2, "0"); // month is 0-indexed
+                const year = d.getFullYear();
+                return `${day}/${month}/${year}`;
+              })()}
+            </div>
           </div>
         </section>
 

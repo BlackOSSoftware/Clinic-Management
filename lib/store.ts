@@ -6,6 +6,7 @@ export type Doctor = {
   id: string
   name: string
   specialization: string
+  degree?: string
   fee: number
   doctorSharePercent: number // e.g., 50 means 50% to doctor
 }
@@ -18,17 +19,18 @@ export type Patient = {
   gender: "Male" | "Female" | "Other"
   address: string
   doctorId: string
-  dateISO: string // registration/visit date
-  fee: number // fee after discount
+  dateISO: string
+  fee: number
   doctorShare: number
   hospitalShare: number
-  reference?: string // inbound referral source (doctor/hospital/name)
+  reference?: string
+  appointmentNumber?: number
   discountPercent?: number
-  referralPercent?: number // referral payout percent on net fee
+  referralPercent?: number
   attended?: boolean
-  referredToHospital?: string // outbound referral to hospital
-  referredToDoctor?: string // outbound referral to doctor/specialist
-  referredDate?: string // when the referral was made
+  referredToHospital?: string
+  referredToDoctor?: string
+  referredDate?: string
 }
 
 export type Service = {
@@ -41,12 +43,12 @@ export type ServiceRecord = {
   id: string
   dateISO: string
   serviceId: string
-  patientId?: string // if general service, undefined
+  patientId?: string
   patientName?: string
-  doctorId?: string // optional doctor attribution
+  doctorId?: string
   total: number
-  doctorShare?: number // computed if doctorId present
-  hospitalShare?: number // computed if doctorId present
+  doctorShare?: number
+  hospitalShare?: number
 }
 
 export type LabTest = {
@@ -61,7 +63,7 @@ export type LabRecord = {
   labTestId: string
   patientId?: string
   patientName?: string
-  doctorId?: string // optional doctor attribution
+  doctorId?: string
   total: number
   doctorShare?: number
   hospitalShare?: number
@@ -81,7 +83,7 @@ export type Store = {
   serviceRecords: ServiceRecord[]
   labTests: LabTest[]
   labRecords: LabRecord[]
-  expenses: Expense[] //
+  expenses: Expense[]
 }
 
 const STORAGE_KEY = "hcms-data-v1"
@@ -92,8 +94,22 @@ function uid(prefix: string) {
 
 const seed: Store = {
   doctors: [
-    { id: "doc_1", name: "Dr. A. Khan", specialization: "General Physician", fee: 400, doctorSharePercent: 50 },
-    { id: "doc_2", name: "Dr. S. Mehta", specialization: "Pediatrics", fee: 500, doctorSharePercent: 60 },
+    {
+      id: "doc_1",
+      name: "Dr. A. Khan",
+      specialization: "General Physician",
+      degree: "MBBS",
+      fee: 400,
+      doctorSharePercent: 50,
+    },
+    {
+      id: "doc_2",
+      name: "Dr. S. Mehta",
+      specialization: "Pediatrics",
+      degree: "MD",
+      fee: 500,
+      doctorSharePercent: 60,
+    },
   ],
   patients: [],
   services: [
@@ -108,7 +124,7 @@ const seed: Store = {
     { id: "lab_lft", name: "LFT", price: 600 },
   ],
   labRecords: [],
-  expenses: [], //
+  expenses: [],
 }
 
 const fetcher = async (): Promise<Store> => {
@@ -150,6 +166,7 @@ export function useHCMS() {
       persist(next)
     },
 
+    // Patients
     addPatient: (
       payload: Omit<Patient, "id" | "doctorShare" | "hospitalShare" | "fee" | "attended"> & { dateISO?: string },
     ) => {
@@ -162,18 +179,19 @@ export function useHCMS() {
       const hospitalShare = netFee - doctorShare
 
       const p: Patient = {
+        ...payload,
         id: uid("pat"),
         dateISO: payload.dateISO || new Date().toISOString(),
         fee: netFee,
         doctorShare,
         hospitalShare,
         attended: false,
-        ...payload,
+        appointmentNumber: payload.appointmentNumber, // optional
       }
+
 
       const next = { ...store, patients: [p, ...store.patients] }
       persist(next)
-
       return p
     },
 
@@ -185,7 +203,7 @@ export function useHCMS() {
       persist(next)
     },
 
-    // Services master
+    // Services
     addService: (payload: Omit<Service, "id">) => {
       const s: Service = { id: uid("srv"), ...payload }
       const next = { ...store, services: [...store.services, s] }
@@ -196,6 +214,16 @@ export function useHCMS() {
       const next = { ...store, services: store.services.filter((s) => s.id !== id) }
       persist(next)
     },
+    updateService: (id: string, patch: Partial<Service>) => {
+      const next = {
+        ...store,
+        services: store.services.map((s) =>
+          s.id === id ? { ...s, ...patch } : s
+        ),
+      }
+      persist(next)
+    },
+
 
     addServiceRecord: (
       serviceId: string,
@@ -244,7 +272,7 @@ export function useHCMS() {
       persist(next)
     },
 
-    // Lab master
+    // Lab
     addLabTest: (payload: Omit<LabTest, "id">) => {
       const t: LabTest = { id: uid("lab"), ...payload }
       const next = { ...store, labTests: [...store.labTests, t] }
@@ -303,6 +331,7 @@ export function useHCMS() {
       persist(next)
     },
 
+    // Expenses
     addExpense: (name: string, amount: number, dateISO?: string) => {
       const exp: Expense = {
         id: uid("exp"),

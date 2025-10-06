@@ -9,25 +9,73 @@ import { Button } from "@/components/ui/button"
 
 export default function DoctorsPage() {
   const { store, addDoctor, updateDoctor, deleteDoctor } = useHCMS()
-  const [form, setForm] = useState({ name: "", specialization: "", fee: "", doctorSharePercent: "50" })
+  const [form, setForm] = useState({
+    id: "",
+    name: "",
+    specialization: "",
+    degree: "",
+    fee: "",
+    doctorSharePercent: "50",
+  })
+
+
+  const [isEditing, setIsEditing] = useState(false)
+  const monthKey = new Date().toISOString().slice(0, 7)
 
   function submit() {
-    if (!form.name || !form.specialization || !form.fee) return
-    addDoctor({
-      name: form.name,
-      specialization: form.specialization,
-      fee: Number(form.fee),
-      doctorSharePercent: Number(form.doctorSharePercent),
-    })
-    setForm({ name: "", specialization: "", fee: "", doctorSharePercent: "50" })
+    if (!form.name || !form.specialization || !form.degree || !form.fee) return
+
+    if (isEditing && form.id) {
+      // update existing doctor
+      updateDoctor(form.id, {
+        name: form.name,
+        specialization: form.specialization,
+        degree: form.degree,
+        fee: Number(form.fee),
+        doctorSharePercent: Number(form.doctorSharePercent),
+      })
+    } else {
+      // add new doctor
+      addDoctor({
+        name: form.name,
+        specialization: form.specialization,
+        degree: form.degree,
+        fee: Number(form.fee),
+        doctorSharePercent: Number(form.doctorSharePercent),
+      })
+    }
+
+    resetForm()
   }
 
-  const monthKey = new Date().toISOString().slice(0, 7)
+  function resetForm() {
+    setForm({
+      id: "",
+      name: "",
+      specialization: "",
+      degree: "",
+      fee: "",
+      doctorSharePercent: "50",
+    })
+    setIsEditing(false)
+  }
+
+  function editDoctor(d: any) {
+    setForm({
+      id: d.id,
+      name: d.name,
+      specialization: d.specialization,
+      degree: d.degree || "",
+      fee: String(d.fee),
+      doctorSharePercent: String(d.doctorSharePercent),
+    })
+    setIsEditing(true)
+  }
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <Card className="rounded-xl p-4 shadow-sm">
-        <div className="mb-3 font-semibold">Add Doctor</div>
+        <div className="mb-3 font-semibold">{isEditing ? "Edit Doctor" : "Add Doctor"}</div>
         <div className="grid grid-cols-1 gap-3">
           <div>
             <Label>Name</Label>
@@ -36,6 +84,10 @@ export default function DoctorsPage() {
           <div>
             <Label>Specialization</Label>
             <Input value={form.specialization} onChange={(e) => setForm({ ...form, specialization: e.target.value })} />
+          </div>
+          <div>
+            <Label>Degree</Label>
+            <Input value={form.degree} onChange={(e) => setForm({ ...form, degree: e.target.value })} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -51,24 +103,32 @@ export default function DoctorsPage() {
               />
             </div>
           </div>
-          <Button className="bg-primary text-primary-foreground hover:opacity-90" onClick={submit}>
-            Save Doctor
-          </Button>
+          <div className="flex gap-2">
+            <Button className="bg-primary text-primary-foreground hover:opacity-90" onClick={submit}>
+              {isEditing ? "Update Doctor" : "Save Doctor"}
+            </Button>
+            {isEditing && (
+              <Button variant="secondary" onClick={resetForm}>
+                Cancel
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
 
       <Card className="rounded-xl p-4 shadow-sm lg:col-span-2">
         <div className="mb-3 font-semibold">Doctors</div>
         <div className="overflow-x-auto rounded-lg border border-border">
-          <div className="grid grid-cols-7 gap-2 border-b border-border bg-muted px-3 py-2 text-xs font-medium">
+          <div className="grid grid-cols-9 gap-2 border-b border-border bg-muted px-3 py-2 text-xs font-medium">
             <div>Name</div>
             <div>Specialization</div>
+            <div>Degree</div>
             <div>Fee</div>
             <div>Doctor %</div>
-            <div>Patient Share</div>
-            <div>Svc+Lab Share</div>
+            <div className="text-right">Edits</div>
             <div className="text-right">Actions</div>
           </div>
+
           {store.doctors.map((d) => {
             const pat = store.patients.filter((p) => p.doctorId === d.id && p.dateISO.slice(0, 7) === monthKey)
             const patientShare = pat.reduce((sum, p) => sum + p.doctorShare, 0)
@@ -83,21 +143,25 @@ export default function DoctorsPage() {
             const payout = patientShare + svcShare + labShare
 
             return (
-              <div key={d.id} className="grid grid-cols-7 items-center gap-2 border-b border-border px-3 py-2 text-sm">
+              <div key={d.id} className="grid grid-cols-9 items-center gap-2 border-b border-border px-3 py-2 text-sm">
                 <div className="truncate">{d.name}</div>
                 <div className="truncate">{d.specialization}</div>
+                <div className="truncate">{d.degree || "-"}</div>
                 <div>₹ {d.fee}</div>
                 <div>{d.doctorSharePercent}%</div>
-                <div>₹ {patientShare}</div>
-                <div>₹ {svcShare + labShare}</div>
                 <div className="flex justify-end gap-2">
-                  <div className="text-xs text-muted-foreground self-center">Total: ₹ {payout}</div>
-                  <Button
-                    variant="secondary"
-                    className="bg-secondary text-secondary-foreground"
-                    onClick={() => updateDoctor(d.id, { doctorSharePercent: Math.min(90, d.doctorSharePercent + 5) })}
-                  >
-                    +5% Share
+                 
+
+                   <Button variant="secondary" onClick={() => editDoctor(d)}>
+                    Edit
+                  </Button>
+                 
+                </div>
+                <div className="flex justify-end gap-2">
+                 
+
+                   <Button variant="secondary" onClick={() => editDoctor(d)}>
+                    Edit
                   </Button>
                   <Button variant="destructive" onClick={() => deleteDoctor(d.id)}>
                     Delete
@@ -106,7 +170,10 @@ export default function DoctorsPage() {
               </div>
             )
           })}
-          {store.doctors.length === 0 && <div className="p-4 text-sm text-muted-foreground">No doctors added.</div>}
+
+          {store.doctors.length === 0 && (
+            <div className="p-4 text-sm text-muted-foreground">No doctors added.</div>
+          )}
         </div>
       </Card>
     </div>

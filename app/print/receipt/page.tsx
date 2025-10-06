@@ -10,8 +10,19 @@ export default function PrintReceiptPage() {
   const id = params.get("id")
   const { store } = useHCMS()
 
+  const formatDate = (iso?: string) => {
+    if (!iso) return ""
+    const d = new Date(iso)
+    const day = String(d.getDate()).padStart(2, "0")
+    const month = String(d.getMonth() + 1).padStart(2, "0")
+    const year = d.getFullYear()
+    return `${day}-${month}-${year}`
+  }
+
   const meta = useMemo(() => {
     if (!id || !kind) return null
+
+    // Appointment
     if (kind === "appointment") {
       const p = store.patients.find((x) => x.id === id)
       if (!p) return null
@@ -20,34 +31,68 @@ export default function PrintReceiptPage() {
         type: "Appointment",
         patientName: p.name,
         patientAge: p.age,
+        patientGender: p.gender,
         patientPhone: p.phone,
         doctorName: d?.name,
+        doctorDegree: d?.degree,
         doctorSpec: d?.specialization,
         fee: p.fee,
+        date: formatDate(p.dateISO),
       }
     }
+
+    // Service
     if (kind === "service") {
       const r = store.serviceRecords.find((x) => x.id === id)
-      const s = store.services.find((x) => x.id === r?.serviceId)
-      const p = store.patients.find((x) => x.id === r?.patientId)
+      if (!r) return null
+      const s = store.services.find((x) => x.id === r.serviceId)
+      const p = r.patientId ? store.patients.find((x) => x.id === r.patientId) : undefined
+      const d = r.doctorId
+        ? store.doctors.find((x) => x.id === r.doctorId)
+        : p
+          ? store.doctors.find((x) => x.id === p.doctorId)
+          : undefined
+
       return {
         type: "Service",
         serviceName: s?.name,
-        patientName: p?.name,
+        patientName: r.patientName || p?.name || "(General)",
+        patientAge: p?.age,
+        patientGender: p?.gender,
+        doctorName: d?.name,
+        doctorDegree: d?.degree,
+        doctorSpec: d?.specialization,
         fee: r?.total ?? 0,
+        date: formatDate(r?.dateISO),
       }
     }
+
+    // Lab
     if (kind === "lab") {
       const r = store.labRecords.find((x) => x.id === id)
-      const t = store.labTests.find((x) => x.id === r?.labTestId)
-      const p = store.patients.find((x) => x.id === r?.patientId)
+      if (!r) return null
+      const t = store.labTests.find((x) => x.id === r.labTestId)
+      const p = r.patientId ? store.patients.find((x) => x.id === r.patientId) : undefined
+      const d = r.doctorId
+        ? store.doctors.find((x) => x.id === r.doctorId)
+        : p
+          ? store.doctors.find((x) => x.id === p.doctorId)
+          : undefined
+
       return {
         type: "Lab",
         serviceName: t?.name,
-        patientName: p?.name,
+        patientName: r.patientName || p?.name || "(General)",
+        patientAge: p?.age,
+        patientGender: p?.gender,
+        doctorName: d?.name,
+        doctorDegree: d?.degree,
+        doctorSpec: d?.specialization,
         fee: r?.total ?? 0,
+        date: formatDate(r?.dateISO),
       }
     }
+
     return null
   }, [store, id, kind])
 
@@ -87,25 +132,19 @@ export default function PrintReceiptPage() {
             <div className="font-medium">Receipt Type</div>
             <div>{meta.type}</div>
           </div>
-          {"patientAge" in meta && (
+          {"patientName" in meta && (
             <div>
               <div className="font-medium">Patient</div>
-              <div>
-                {meta.patientName} {typeof meta.patientAge === "number" ? `(Age ${meta.patientAge})` : ""}
+              <div className="capitalize">
+                {meta.patientName} {meta.patientGender} <br /> {meta.patientAge ? `(Age ${meta.patientAge})` : ""}
               </div>
             </div>
           )}
-          {"patientName" in meta && !("patientAge" in meta) && (
-            <div>
-              <div className="font-medium">Patient</div>
-              <div>{meta.patientName || "—"}</div>
-            </div>
-          )}
-          {"doctorName" in meta && (
+          {"doctorName" in meta && meta.doctorName && (
             <div>
               <div className="font-medium">Doctor</div>
               <div>
-                {meta.doctorName} — {meta.doctorSpec}
+                {meta.doctorName} {meta.doctorDegree} <br /> {meta.doctorSpec}
               </div>
             </div>
           )}
@@ -116,6 +155,10 @@ export default function PrintReceiptPage() {
             </div>
           )}
           <div>
+            <div className="font-medium">Date</div>
+            <div>{meta.date}</div>
+          </div>
+          <div>
             <div className="font-medium">Total Fee</div>
             <div>₹ {meta.fee}</div>
           </div>
@@ -125,6 +168,26 @@ export default function PrintReceiptPage() {
           Thank you for visiting CityCare Hospital.
         </footer>
       </div>
+
+      <style jsx>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print\\:p-0,
+          .print\\:rounded-none,
+          .print\\:border-0,
+          .print\\:block {
+            visibility: visible;
+          }
+          div.mx-auto {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+        }
+      `}</style>
     </div>
   )
 }

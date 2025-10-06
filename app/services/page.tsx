@@ -10,7 +10,7 @@ import Link from "next/link"
 import { useAuth } from "@/lib/auth"
 
 export default function ServicesPage() {
-  const { store, addService, deleteService, addServiceRecord } = useHCMS()
+  const { store, addService, deleteService, addServiceRecord, updateService } = useHCMS()
   const { role } = useAuth()
   const isReception = role === "reception"
   const [name, setName] = useState("")
@@ -19,6 +19,9 @@ export default function ServicesPage() {
   const [patientId, setPatientId] = useState<string | "">("")
   const [patientName, setPatientName] = useState("")
   const [doctorId, setDoctorId] = useState<string | "">("")
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editPrice, setEditPrice] = useState("")
 
   const now = new Date()
   const today = now.toISOString().slice(0, 10)
@@ -33,14 +36,81 @@ export default function ServicesPage() {
     setPrice("")
   }
 
+  function startEdit(service: any) {
+    setEditId(service.id)
+    setEditName(service.name)
+    setEditPrice(String(service.price))
+  }
+
+  function saveEdit(id: string) {
+    if (!editName || !editPrice) return
+    updateService(id, { name: editName, price: Number(editPrice) })
+    setEditId(null)
+    setEditName("")
+    setEditPrice("")
+  }
+
   function addRecord() {
-    if (!serviceId) return
-    const iso = dateStr && timeStr ? new Date(`${dateStr}T${timeStr}:00`).toISOString() : undefined
-    addServiceRecord(serviceId, patientId || undefined, patientName || undefined, iso, doctorId || undefined)
+    if (!serviceId) {
+      alert("Please select a service.")
+      return
+    }
+
+    const service = store.services.find((s) => s.id === serviceId)
+    if (!service) {
+      alert("Selected service not found.")
+      return
+    }
+
+    // Validate patient
+    let validPatientId: string | undefined = undefined
+    if (patientId) {
+      const foundPatient = store.patients.find((p) => p.id === patientId)
+      if (!foundPatient) {
+        alert("Selected patient not found. Please select a valid patient.")
+        return
+      }
+      validPatientId = foundPatient.id
+    }
+
+    // Validate doctor
+    let validDoctorId: string | undefined = undefined
+    if (doctorId) {
+      const foundDoctor = store.doctors.find((d) => d.id === doctorId)
+      if (!foundDoctor) {
+        alert("Selected doctor not found. Please select a valid doctor.")
+        return
+      }
+      validDoctorId = foundDoctor.id
+    }
+
+    const iso =
+      dateStr && timeStr ? new Date(`${dateStr}T${timeStr}:00`).toISOString() : undefined
+
+    addServiceRecord(
+      serviceId,
+      validPatientId,
+      patientName || undefined,
+      iso,
+      validDoctorId
+    )
+
     setPatientId("")
     setPatientName("")
     setDoctorId("")
   }
+
+  function formatDate(isoString: string) {
+  const date = new Date(isoString)
+  const day = String(date.getDate()).padStart(2, "0")
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const year = date.getFullYear()
+  const hours = date.getHours()
+  const minutes = String(date.getMinutes()).padStart(2, "0")
+  const ampm = hours >= 12 ? "PM" : "AM"
+  const displayHours = hours % 12 || 12
+  return `${day}/${month}/${year} ${displayHours}:${minutes} ${ampm}`
+}
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -65,17 +135,67 @@ export default function ServicesPage() {
             <div className="mb-2 font-medium">Services</div>
             <div className="rounded-lg border border-border">
               {store.services.map((s) => (
-                <div key={s.id} className="flex items-center justify-between border-b border-border px-3 py-2 text-sm">
-                  <div className="truncate">{s.name}</div>
-                  <div className="flex items-center gap-3">
-                    <div>₹ {s.price}</div>
-                    <Button variant="destructive" onClick={() => deleteService(s.id)}>
-                      Delete
-                    </Button>
-                  </div>
+                <div
+                  key={s.id}
+                  className="flex items-center justify-between border-b border-border px-3 py-2 text-sm"
+                >
+                  {editId === s.id ? (
+                    <div className="flex w-full items-center justify-between gap-3">
+                      <Input
+                        className="w-1/2"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                      />
+                      <Input
+                        className="w-1/4"
+                        type="number"
+                        value={editPrice}
+                        onChange={(e) => setEditPrice(e.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          className="bg-green-600 text-white hover:opacity-90"
+                          onClick={() => saveEdit(s.id)}
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditId(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="truncate">{s.name}</div>
+                      <div className="flex items-center gap-3">
+                        <div>₹ {s.price}</div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => startEdit(s)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => deleteService(s.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
-              {store.services.length === 0 && <div className="p-4 text-sm text-muted-foreground">No services.</div>}
+              {store.services.length === 0 && (
+                <div className="p-4 text-sm text-muted-foreground">No services.</div>
+              )}
             </div>
           </div>
         </Card>
@@ -159,12 +279,17 @@ export default function ServicesPage() {
               const p = store.patients.find((x) => x.id === r.patientId)
               const d = store.doctors.find((x) => x.id === r.doctorId)
               const displayName = p?.name || r.patientName || "(General)"
-              const dateLabel = new Date(r.dateISO).toLocaleString()
+              const dateLabel = formatDate(r.dateISO)
               return (
-                <div key={r.id} className="flex items-center justify-between border-b border-border px-3 py-2 text-sm">
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between border-b border-border px-3 py-2 text-sm"
+                >
                   <div className="truncate">
                     {s?.name} → {displayName} — ₹{r.total} • {dateLabel}
-                    {d ? <span className="ml-2 text-xs text-muted-foreground">({d.name})</span> : null}
+                    {d ? (
+                      <span className="ml-2 text-xs text-muted-foreground">({d.name})</span>
+                    ) : null}
                   </div>
                   <Link
                     href={`/print/receipt?kind=service&id=${r.id}`}
@@ -175,7 +300,9 @@ export default function ServicesPage() {
                 </div>
               )
             })}
-            {store.serviceRecords.length === 0 && <div className="p-4 text-sm text-muted-foreground">No records.</div>}
+            {store.serviceRecords.length === 0 && (
+              <div className="p-4 text-sm text-muted-foreground">No records.</div>
+            )}
           </div>
         </div>
       </Card>

@@ -84,7 +84,7 @@ export default function ClientShell({ children }: { children: React.ReactNode })
                   logout()
                   router.replace("/login")
                 }}
-                className="inline-flex h-9 items-center rounded-md bg-destructive px-3 text-sm font-medium text-destructive-foreground hover:opacity-90"
+                className="inline-flex h-9 items-center rounded-md bg-destructive px-3 text-sm font-medium text-destructive-foreground hover:opacity-90 text-white"
               >
                 Logout
               </button>

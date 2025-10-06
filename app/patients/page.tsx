@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useHCMS } from "@/lib/store"
+import { Patient, useHCMS } from "@/lib/store"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -58,7 +58,16 @@ export default function PatientsPage() {
     appointmentDate: todayDate,
     appointmentTime: currentTime,
   })
-
+  const [patientForm, setPatientForm] = useState<Partial<Patient>>({
+    name: "",
+    phone: "",
+    age: 0,
+    gender: "Male",
+    address: "",
+    doctorId: "",
+    dateISO: "",
+  })
+  const [isEditingPatient, setIsEditingPatient] = useState(false)
   const [referralDialog, setReferralDialog] = useState<{ open: boolean; patientId: string | null }>({
     open: false,
     patientId: null,
@@ -108,6 +117,16 @@ export default function PatientsPage() {
 
     const appointmentDateTime = new Date(`${form.appointmentDate}T${form.appointmentTime}:00`).toISOString()
 
+    // find today's existing patients
+    const todayPatients = store.patients.filter(
+      (p) => p.dateISO.slice(0, 10) === todayDate
+    )
+
+    // find next number
+    const nextNumber = todayPatients.length > 0
+      ? Math.max(...todayPatients.map((p) => p.appointmentNumber || 0)) + 1
+      : 1
+
     const patient = addPatient({
       name: form.name,
       phone: form.phone,
@@ -119,7 +138,9 @@ export default function PatientsPage() {
       discountPercent: Number(form.discountPercent || 0),
       referralPercent: form.referralPercent ? Number(form.referralPercent) : undefined,
       dateISO: appointmentDateTime,
+      appointmentNumber: nextNumber, // add this new field
     })
+
 
     if (form.addService && form.serviceId) {
       addServiceRecord(form.serviceId, patient.id, undefined, appointmentDateTime, form.doctorId)
@@ -399,118 +420,221 @@ export default function PatientsPage() {
             />
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <div className="min-w-[900px] rounded-lg border border-border">
-            <div className="grid grid-cols-7 gap-2 border-b border-border bg-muted px-3 py-2 text-xs font-medium">
-              <div>ID</div>
-              <div>Name</div>
-              <div>Phone</div>
-              <div>Doctor</div>
-              <div>Fee</div>
-              <div>Status</div>
-              <div className="text-right">Actions</div>
-            </div>
-            {filtered.map((p) => {
-              const d = store.doctors.find((x) => x.id === p.doctorId)
-              return (
-                <div
-                  key={p.id}
-                  className="grid grid-cols-7 items-center gap-2 border-b border-border px-3 py-2 text-sm"
+
+        {/* Edit Patient */}
+        {isEditingPatient && (
+          <Card className="rounded-xl p-4 shadow-sm lg:col-span-1">
+            <div className="mb-3 font-semibold">Edit Patient</div>
+            <div className="grid grid-cols-1 gap-3">
+              <Input
+                placeholder="Name"
+                value={patientForm.name || ""}
+                onChange={(e) => setPatientForm({ ...patientForm, name: e.target.value })}
+              />
+              <Input
+                placeholder="Phone"
+                value={patientForm.phone || ""}
+                onChange={(e) => setPatientForm({ ...patientForm, phone: e.target.value })}
+              />
+              <Input
+                placeholder="Age"
+                type="number"
+                value={patientForm.age?.toString() || ""}
+                onChange={(e) => setPatientForm({ ...patientForm, age: Number(e.target.value) })}
+              />
+              <Input
+                placeholder="Address"
+                value={patientForm.address || ""}
+                onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })}
+              />
+              <select
+                value={patientForm.gender || "Male"}
+                onChange={(e) => setPatientForm({ ...patientForm, gender: e.target.value as any })}
+              >
+                <option>Male</option>
+                <option>Female</option>
+                <option>Other</option>
+              </select>
+              <select
+                value={patientForm.doctorId || store.doctors[0]?.id}
+                onChange={(e) => setPatientForm({ ...patientForm, doctorId: e.target.value })}
+              >
+                {store.doctors.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => {
+                    if (!patientForm.id) return
+                    updatePatient(patientForm.id, patientForm as any)
+                    setIsEditingPatient(false)
+                    setPatientForm({})
+                  }}
                 >
-                  <div className="truncate">{p.id.slice(0, 6)}</div>
-                  <div className="truncate">
-                    <div className="truncate">{p.name}</div>
-                    {(p.referredToHospital || p.referredToDoctor) && (
-                      <div className="truncate text-xs text-muted-foreground">
-                        {"\u2192"} Referred: {p.referredToDoctor || "—"}
-                        {p.referredToHospital ? ` @ ${p.referredToHospital}` : ""}
-                      </div>
-                    )}
-                  </div>
-                  <div>{p.phone}</div>
-                  <div className="truncate">{d?.name}</div>
-                  <div>₹ {p.fee}</div>
-                  <div>
-                    <span
-                      className={`rounded px-2 py-0.5 text-xs ${p.attended ? "bg-accent text-accent-foreground" : "bg-secondary text-secondary-foreground"}`}
-                    >
-                      {p.attended ? "Attended" : "Pending"}
-                    </span>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Dialog
-                      open={referralDialog.open && referralDialog.patientId === p.id}
-                      onOpenChange={(open) => {
-                        if (open) {
-                          setReferralDialog({ open: true, patientId: p.id })
-                          setReferralDoctor(p.referredToDoctor || "")
-                          setReferralHospital(p.referredToHospital || "")
-                        } else {
-                          setReferralDialog({ open: false, patientId: null })
-                        }
-                      }}
-                    >
-                      <DialogTrigger asChild>
-                        <button className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground hover:opacity-90">
-                          Refer
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Refer Patient</DialogTitle>
-                          <DialogDescription>Refer {p.name} to another doctor or hospital</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div>
-                            <Label htmlFor="refDoctor">Doctor Name</Label>
-                            <Input
-                              id="refDoctor"
-                              value={referralDoctor}
-                              onChange={(e) => setReferralDoctor(e.target.value)}
-                              placeholder="e.g. Dr. Sharma (Cardiology)"
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor="refHospital">Hospital Name (Optional)</Label>
-                            <Input
-                              id="refHospital"
-                              value={referralHospital}
-                              onChange={(e) => setReferralHospital(e.target.value)}
-                              placeholder="e.g. CityCare Hospital"
-                            />
-                          </div>
-                          <Button onClick={submitReferral} className="w-full">
-                            Save Referral
-                          </Button>
+                  Save Changes
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setIsEditingPatient(false)
+                    setPatientForm({})
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        <div className="max-h-[70vh] overflow-y-auto overflow-x-auto border border-border rounded-lg">
+          <table className="min-w-[1050px] w-full text-sm border-collapse">
+            <thead className="bg-muted sticky top-0 z-10">
+              <tr className="text-xs font-medium border-b border-border">
+                {!showAll && <th className="p-2 text-left w-[60px]">No.</th>}
+                <th className="p-2 text-left w-[100px]">ID</th>
+                <th className="p-2 text-left w-[200px]">Name</th>
+                <th className="p-2 text-left w-[140px]">Phone</th>
+                <th className="p-2 text-left w-[140px]">Gender</th>
+                <th className="p-2 text-left w-[180px]">Doctor</th>
+                <th className="p-2 text-left w-[100px]">Fee</th>
+                <th className="p-2 text-left w-[120px]">Status</th>
+                <th className="p-2 text-right w-[220px]">Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {filtered.map((p, index) => {
+                const d = store.doctors.find((x) => x.id === p.doctorId)
+                const serialNumber = index + 1 // today's serial number
+                return (
+                  <tr key={p.id} className="border-b border-border hover:bg-muted/40">
+                    {!showAll && <td className="p-2 text-center">{p.appointmentNumber ?? "—"}</td>}
+                    <td className="p-2 truncate">{p.id.slice(0, 6)}</td>
+                    <td className="p-2 truncate capitalize">
+                      <div>{p.name} Age - {p.age}</div>
+                      {(p.referredToHospital || p.referredToDoctor) && (
+                        <div className="truncate text-xs text-muted-foreground">
+                          → Referred: {p.referredToDoctor || "—"}
+                          {p.referredToHospital ? ` @ ${p.referredToHospital}` : ""}
                         </div>
-                      </DialogContent>
-                    </Dialog>
-                    <button
-                      onClick={() => updatePatient(p.id, { attended: !p.attended })}
-                      className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
-                    >
-                      {p.attended ? "Unmark" : "Mark Attended"}
-                    </button>
-                    <Link
-                      href={`/print/receipt?kind=appointment&id=${p.id}`}
-                      className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
-                    >
-                      Print Receipt
-                    </Link>
-                    <Link
-                      href={`/print/prescription?id=${p.id}`}
-                      className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90"
-                    >
-                      Print Prescription
-                    </Link>
-                  </div>
-                </div>
-              )
-            })}
-            {filtered.length === 0 && <div className="p-4 text-sm text-muted-foreground">No patients found.</div>}
-          </div>
+                      )}
+                    </td>
+                    <td className="p-2">{p.phone}</td>
+                    <td className="p-2">{p.gender}</td>
+                    <td className="p-2 truncate">{d?.name || "—"}</td>
+                    <td className="p-2">₹ {p.fee}</td>
+                    <td className="p-2">
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs ${p.attended
+                          ? "bg-accent text-accent-foreground"
+                          : "bg-secondary text-secondary-foreground"
+                          }`}
+                      >
+                        {p.attended ? "Attended" : "Pending"}
+                      </span>
+                    </td>
+                    <td className="p-2 text-right">
+                      <div className="flex justify-end gap-2 flex-wrap">
+                        <Dialog
+                          open={referralDialog.open && referralDialog.patientId === p.id}
+                          onOpenChange={(open) => {
+                            if (open) {
+                              setReferralDialog({ open: true, patientId: p.id })
+                              setReferralDoctor(p.referredToDoctor || "")
+                              setReferralHospital(p.referredToHospital || "")
+                            } else {
+                              setReferralDialog({ open: false, patientId: null })
+                            }
+                          }}
+                        >
+                          <DialogTrigger asChild>
+                            <button className="rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground hover:opacity-90">
+                              Refer
+                            </button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Refer Patient</DialogTitle>
+                              <DialogDescription>
+                                Refer {p.name} to another doctor or hospital
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4">
+                              <div>
+                                <Label htmlFor="refDoctor">Doctor Name</Label>
+                                <Input
+                                  id="refDoctor"
+                                  value={referralDoctor}
+                                  onChange={(e) => setReferralDoctor(e.target.value)}
+                                  placeholder="e.g. Dr. Sharma (Cardiology)"
+                                />
+                              </div>
+                              <div>
+                                <Label htmlFor="refHospital">Hospital Name (Optional)</Label>
+                                <Input
+                                  id="refHospital"
+                                  value={referralHospital}
+                                  onChange={(e) => setReferralHospital(e.target.value)}
+                                  placeholder="e.g. CityCare Hospital"
+                                />
+                              </div>
+                              <Button onClick={submitReferral} className="w-full">
+                                Save Referral
+                              </Button>
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+
+                        <button
+                          onClick={() => updatePatient(p.id, { attended: !p.attended })}
+                          className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
+                        >
+                          {p.attended ? "Unmark" : "Mark Attended"}
+                        </button>
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            setPatientForm(p)
+                            setIsEditingPatient(true)
+                          }}
+                        >
+                          Edit
+                        </Button>
+
+                        <Link
+                          href={`/print/receipt?kind=appointment&id=${p.id}`}
+                          className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
+                        >
+                          Print Receipt
+                        </Link>
+                        <Link
+                          href={`/print/prescription?id=${p.id}`}
+                          className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground hover:opacity-90"
+                        >
+                          Print Prescription
+                        </Link>
+
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={showAll ? 7 : 8} className="p-4 text-center text-sm text-muted-foreground">
+                    No patients found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </Card>
+
+
     </div>
   )
 }
