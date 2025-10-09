@@ -496,10 +496,11 @@ export default function PatientsPage() {
                 {!showAll && <th className="p-2 text-left w-[60px]">No.</th>}
                 <th className="p-2 text-left w-[100px]">ID</th>
                 <th className="p-2 text-left w-[200px]">Name</th>
-                <th className="p-2 text-left w-[140px]">Phone</th>
+                <th className="p-2 text-left w-[200px]">Age</th>
                 <th className="p-2 text-left w-[140px]">Gender</th>
                 <th className="p-2 text-left w-[180px]">Doctor</th>
                 <th className="p-2 text-left w-[100px]">Fee</th>
+                <th className="p-2 text-left w-[140px]">Phone</th>
                 <th className="p-2 text-left w-[120px]">Status</th>
                 <th className="p-2 text-right w-[220px]">Actions</th>
               </tr>
@@ -514,7 +515,7 @@ export default function PatientsPage() {
                     {!showAll && <td className="p-2 text-center">{p.appointmentNumber ?? "—"}</td>}
                     <td className="p-2 truncate">{p.id.slice(0, 6)}</td>
                     <td className="p-2 truncate capitalize">
-                      <div>{p.name} Age - {p.age}</div>
+                      <div>{p.name} </div>
                       {(p.referredToHospital || p.referredToDoctor) && (
                         <div className="truncate text-xs text-muted-foreground">
                           → Referred: {p.referredToDoctor || "—"}
@@ -522,10 +523,13 @@ export default function PatientsPage() {
                         </div>
                       )}
                     </td>
-                    <td className="p-2">{p.phone}</td>
+                      <td className="p-2 truncate">Age - {p.age} </td>
+
                     <td className="p-2">{p.gender}</td>
                     <td className="p-2 truncate">{d?.name || "—"}</td>
                     <td className="p-2">₹ {p.fee}</td>
+                    <td className="p-2">{p.phone}</td>
+
                     <td className="p-2">
                       <span
                         className={`rounded px-2 py-0.5 text-xs ${p.attended

@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label"
 import { jsPDF } from "jspdf"
 import autoTable from "jspdf-autotable"
 
+// Helper Functions
+
 function inRange(iso: string, start?: string, end?: string) {
   const d = iso.slice(0, 10)
   if (start && d < start) return false
@@ -43,7 +45,7 @@ export default function ReportsPage() {
   const [endDate, setEndDate] = useState("")
   const [doctorId, setDoctorId] = useState<string | "">("")
 
-  // Patients, Services, Lab filtered by range (inclusive)
+  // Filtered lists
   const patients = useMemo(
     () => store.patients.filter((p: any) => inRange(p.dateISO, startDate, endDate)),
     [store.patients, startDate, endDate],
@@ -160,7 +162,7 @@ export default function ReportsPage() {
     })
   }, [store, patients, serviceRecords, labRecords, doctorId])
 
-  // References (inbound by source)
+  // References (inbound)
   const referenceRows = useMemo(() => {
     const map = new Map<string, { count: number; referralPercentSum: number }>()
     patients.forEach((p: any) => {
@@ -178,13 +180,11 @@ export default function ReportsPage() {
     }))
   }, [patients])
 
-  // Expenses for the selected range
+  // Expenses
   const expenses = useMemo(() => {
     return store.expenses.filter((e: any) => inRange(e.dateISO, startDate, endDate))
   }, [store.expenses, startDate, endDate])
   const expenseTotal = useMemo(() => expenses.reduce((s: number, e: any) => s + e.amount, 0), [expenses])
-
-  // Expense add form
   const [expName, setExpName] = useState("")
   const [expAmount, setExpAmount] = useState("")
   const [expDate, setExpDate] = useState(today)
@@ -197,12 +197,13 @@ export default function ReportsPage() {
     setExpAmount("")
   }
 
-  // Generate doctor-specific PDF for the selected date range
+  // PDF Export: INCLUDES PATIENT LIST
   function exportDoctorPDF() {
     if (!doctorId) {
       alert("Please select a doctor to export PDF.")
       return
     }
+
     const doctor = store.doctors.find((d: any) => d.id === doctorId)
     if (!doctor) {
       alert("Selected doctor not found.")
@@ -221,22 +222,26 @@ export default function ReportsPage() {
     const doctorShare =
       pRows.reduce((s: number, p: any) => s + p.doctorShare, 0) +
       sRows.reduce(
-        (s: number, r: any) => s + (r.doctorShare ?? calcShares(r.total, getEffectiveDoctorId(r, store), store).doc),
+        (s: number, r: any) =>
+          s + (r.doctorShare ?? calcShares(r.total, getEffectiveDoctorId(r, store), store).doc),
         0,
       ) +
       lRows.reduce(
-        (s: number, r: any) => s + (r.doctorShare ?? calcShares(r.total, getEffectiveDoctorId(r, store), store).doc),
+        (s: number, r: any) =>
+          s + (r.doctorShare ?? calcShares(r.total, getEffectiveDoctorId(r, store), store).doc),
         0,
       )
 
     const hospitalShare =
       pRows.reduce((s: number, p: any) => s + p.hospitalShare, 0) +
       sRows.reduce(
-        (s: number, r: any) => s + (r.hospitalShare ?? calcShares(r.total, getEffectiveDoctorId(r, store), store).hosp),
+        (s: number, r: any) =>
+          s + (r.hospitalShare ?? calcShares(r.total, getEffectiveDoctorId(r, store), store).hosp),
         0,
       ) +
       lRows.reduce(
-        (s: number, r: any) => s + (r.hospitalShare ?? calcShares(r.total, getEffectiveDoctorId(r, store), store).hosp),
+        (s: number, r: any) =>
+          s + (r.hospitalShare ?? calcShares(r.total, getEffectiveDoctorId(r, store), store).hosp),
         0,
       )
 
@@ -246,7 +251,7 @@ export default function ReportsPage() {
     pdf.setFontSize(10)
     pdf.text(`Date Range: ${startDate} → ${endDate}`, 14, 22)
 
-    // Summary
+    // Summary Table
     autoTable(pdf, {
       startY: 28,
       head: [["Metric", "Value"]],
@@ -258,55 +263,111 @@ export default function ReportsPage() {
         ["Doctor Share (Payout)", `₹ ${doctorShare}`],
         ["Hospital Share", `₹ ${hospitalShare}`],
       ],
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [240, 240, 240] },
+      styles: { fontSize: 9, textColor: [0, 0, 0] },
+      headStyles: {
+        fillColor: [230, 230, 230],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+      },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
     })
 
-    // Services Table
-    const afterSummaryY1 = (pdf as any).lastAutoTable?.finalY ? (pdf as any).lastAutoTable.finalY + 8 : 40
+    let afterTableY = (pdf as any).lastAutoTable?.finalY ?? 40
+
+    // Add PATIENTS TABLE
     pdf.setFontSize(12)
-    pdf.text("Services", 14, afterSummaryY1)
+    pdf.text("Patients", 14, afterTableY + 8)
     autoTable(pdf, {
-      startY: afterSummaryY1 + 4,
+      startY: afterTableY + 12,
+      head: [["Date", "Patient", "Phone", "Fee", "Doc Share", "Hosp Share"]],
+      body: pRows.map((p: any) => [
+        new Date(p.dateISO).toLocaleDateString(),
+        p.name,
+        p.phone,
+        `₹ ${p.fee}`,
+        `₹ ${p.doctorShare}`,
+        `₹ ${p.hospitalShare}`,
+      ]),
+      styles: { fontSize: 9, textColor: [0, 0, 0] },
+      headStyles: {
+        fillColor: [230, 230, 230],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+      },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+    })
+
+    afterTableY = (pdf as any).lastAutoTable?.finalY ?? (afterTableY + 40)
+
+    // Add SERVICES TABLE
+    pdf.setFontSize(12)
+    pdf.text("Services", 14, afterTableY + 8)
+    autoTable(pdf, {
+      startY: afterTableY + 12,
       head: [["Date", "Service", "Patient", "Amount", "Doc Share"]],
       body: sRows.map((r: any) => {
         const service = store.services.find((s: any) => s.id === r.serviceId)?.name || "—"
         const patient =
-          r.patientName || (r.patientId ? store.patients.find((p: any) => p.id === r.patientId)?.name : "—") || "—"
+          r.patientName ||
+          (r.patientId ? store.patients.find((p: any) => p.id === r.patientId)?.name : "—") ||
+          "—"
         const effDocId = getEffectiveDoctorId(r, store)
         const docShare = r.doctorShare ?? calcShares(r.total, effDocId, store).doc
-        return [new Date(r.dateISO).toLocaleDateString(), service, patient, `₹ ${r.total}`, `₹ ${docShare}`]
+        return [
+          new Date(r.dateISO).toLocaleDateString(),
+          service,
+          patient,
+          `₹ ${r.total}`,
+          `₹ ${docShare}`,
+        ]
       }),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [240, 240, 240] },
+      styles: { fontSize: 9, textColor: [0, 0, 0] },
+      headStyles: {
+        fillColor: [230, 230, 230],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+      },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
     })
 
-    // Labs Table
-    const afterServicesY = (pdf as any).lastAutoTable?.finalY
-      ? (pdf as any).lastAutoTable.finalY + 8
-      : afterSummaryY1 + 40
+    afterTableY = (pdf as any).lastAutoTable?.finalY ?? (afterTableY + 40)
+
+    // Add LABS TABLE
     pdf.setFontSize(12)
-    pdf.text("Lab Records", 14, afterServicesY)
+    pdf.text("Lab Records", 14, afterTableY + 8)
     autoTable(pdf, {
-      startY: afterServicesY + 4,
+      startY: afterTableY + 12,
       head: [["Date", "Lab Test", "Patient", "Amount", "Doc Share"]],
       body: lRows.map((r: any) => {
         const test = store.labTests.find((t: any) => t.id === r.labTestId)?.name || "—"
         const patient =
-          r.patientName || (r.patientId ? store.patients.find((p: any) => p.id === r.patientId)?.name : "—") || "—"
+          r.patientName ||
+          (r.patientId ? store.patients.find((p: any) => p.id === r.patientId)?.name : "—") ||
+          "—"
         const effDocId = getEffectiveDoctorId(r, store)
         const docShare = r.doctorShare ?? calcShares(r.total, effDocId, store).doc
-        return [new Date(r.dateISO).toLocaleDateString(), test, patient, `₹ ${r.total}`, `₹ ${docShare}`]
+        return [
+          new Date(r.dateISO).toLocaleDateString(),
+          test,
+          patient,
+          `₹ ${r.total}`,
+          `₹ ${docShare}`,
+        ]
       }),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [240, 240, 240] },
+      styles: { fontSize: 9, textColor: [0, 0, 0] },
+      headStyles: {
+        fillColor: [230, 230, 230],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+      },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
     })
 
     const safeName = doctor.name.replace(/\s+/g, "_")
     pdf.save(`report_${safeName}_${startDate}_to_${endDate}.pdf`)
   }
 
-  // Enriched views for Services and Labs with optional doctor filter + totals
+  // Services and Labs enriched for view
   const servicesView = useMemo(() => {
     const serviceName = new Map(store.services.map((s: any) => [s.id, s.name]))
     const doctorName = (id?: string) => (id ? (store.doctors.find((d: any) => d.id === id)?.name ?? "—") : "—")
@@ -382,6 +443,23 @@ export default function ReportsPage() {
       hospShare: rows.reduce((s: number, x: any) => s + x.hospitalShare, 0),
     }
   }, [store, labRecords, doctorId])
+
+  // Patients View enriched for table
+  const patientsView = useMemo(() => {
+    const doctorName = (id?: string) => (id ? (store.doctors.find((d: any) => d.id === id)?.name ?? "—") : "—")
+    return patients
+      .filter((p: any) => !doctorId || p.doctorId === doctorId)
+      .map((p: any) => ({
+        id: p.id,
+        date: new Date(p.dateISO).toLocaleDateString(),
+        patient: p.name || "—",
+        phone: p.phone || "—",
+        doctor: doctorName(p.doctorId),
+        fee: p.fee,
+        doctorShare: p.doctorShare,
+        hospitalShare: p.hospitalShare,
+      }))
+  }, [patients, doctorId, store.doctors])
 
   return (
     <div className="space-y-6">
@@ -477,6 +555,38 @@ export default function ReportsPage() {
       </Card>
 
       <Card className="rounded-xl p-4 shadow-sm">
+        <div className="mb-2 font-semibold">Patients List</div>
+        <div className="mb-3 grid grid-cols-2 gap-2 text-sm text-muted-foreground md:grid-cols-5">
+          <div>Count: {patientsView.length}</div>
+        </div>
+        <div className="rounded-lg border border-border">
+          <div className="grid grid-cols-7 gap-2 border-b border-border bg-muted px-3 py-2 text-xs font-medium">
+            <div>Date</div>
+            <div>Patient</div>
+            <div>Phone</div>
+            <div>Doctor</div>
+            <div className="text-right">Fee</div>
+            <div className="text-right">Doc Share</div>
+            <div className="text-right">Hosp Share</div>
+          </div>
+          {patientsView.map((r: any) => (
+            <div key={r.id} className="grid grid-cols-7 items-center gap-2 border-b border-border px-3 py-2 text-sm">
+              <div>{r.date}</div>
+              <div className="truncate">{r.patient}</div>
+              <div className="truncate">{r.phone}</div>
+              <div className="truncate">{r.doctor}</div>
+              <div className="text-right">₹ {r.fee}</div>
+              <div className="text-right">₹ {r.doctorShare}</div>
+              <div className="text-right">₹ {r.hospitalShare}</div>
+            </div>
+          ))}
+          {patientsView.length === 0 && (
+            <div className="p-4 text-sm text-muted-foreground">No patients for this selection.</div>
+          )}
+        </div>
+      </Card>
+
+      <Card className="rounded-xl p-4 shadow-sm">
         <div className="mb-2 font-semibold">References (Inbound)</div>
         <div className="rounded-lg border border-border">
           <div className="grid grid-cols-3 gap-2 border-b border-border bg-muted px-3 py-2 text-xs font-medium">
@@ -497,8 +607,6 @@ export default function ReportsPage() {
 
       {/* Referrals (Outbound) */}
       {(() => {
-        // compute rows inline to keep patch minimal
-        // show patients in range with outbound referral info; honor doctor filter if set
         const outboundRefRows = patients
           .filter((p: any) => (p.referredToHospital || p.referredToDoctor) && (!doctorId || p.doctorId === doctorId))
           .map((p: any) => ({
@@ -552,7 +660,6 @@ export default function ReportsPage() {
           <div>Doctor Share: ₹ {servicesView.docShare}</div>
           <div>Hospital Share: ₹ {servicesView.hospShare}</div>
         </div>
-
         <div className="rounded-lg border border-border">
           <div className="grid grid-cols-7 gap-2 border-b border-border bg-muted px-3 py-2 text-xs font-medium">
             <div>Date</div>
@@ -589,7 +696,6 @@ export default function ReportsPage() {
           <div>Doctor Share: ₹ {labsView.docShare}</div>
           <div>Hospital Share: ₹ {labsView.hospShare}</div>
         </div>
-
         <div className="rounded-lg border border-border">
           <div className="grid grid-cols-7 gap-2 border-b border-border bg-muted px-3 py-2 text-xs font-medium">
             <div>Date</div>
@@ -615,61 +721,6 @@ export default function ReportsPage() {
           {labsView.rows.length === 0 && (
             <div className="p-4 text-sm text-muted-foreground">No lab records for this selection.</div>
           )}
-        </div>
-      </Card>
-
-      <Card className="rounded-xl p-4 shadow-sm">
-        <div className="mb-3 font-semibold">Expenses (Admin)</div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-          <div className="md:col-span-2">
-            <Label>Name</Label>
-            <Input value={expName} onChange={(e) => setExpName(e.target.value)} placeholder="e.g. Electricity Bill" />
-          </div>
-          <div>
-            <Label>Amount</Label>
-            <Input
-              type="number"
-              value={expAmount}
-              onChange={(e) => setExpAmount(e.target.value)}
-              placeholder="e.g. 2500"
-            />
-          </div>
-          <div>
-            <Label>Date</Label>
-            <Input type="date" value={expDate} onChange={(e) => setExpDate(e.target.value)} />
-          </div>
-          <div className="md:self-end">
-            <Button className="w-full bg-secondary text-secondary-foreground hover:opacity-90" onClick={addNewExpense}>
-              Add Expense
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-4 rounded-lg border border-border">
-          <div className="grid grid-cols-4 gap-2 border-b border-border bg-muted px-3 py-2 text-xs font-medium">
-            <div>Date</div>
-            <div>Name</div>
-            <div>Amount</div>
-            <div className="text-right">Actions</div>
-          </div>
-          {expenses.map((e: any) => (
-            <div key={e.id} className="grid grid-cols-4 items-center gap-2 border-b border-border px-3 py-2 text-sm">
-              <div>{new Date(e.dateISO).toLocaleDateString()}</div>
-              <div className="truncate">{e.name}</div>
-              <div>₹ {e.amount}</div>
-              <div className="text-right">
-                <Button variant="destructive" onClick={() => deleteExpense(e.id)}>
-                  Delete
-                </Button>
-              </div>
-            </div>
-          ))}
-          {expenses.length === 0 && <div className="p-4 text-sm text-muted-foreground">No expenses.</div>}
-        </div>
-
-        <div className="mt-3 text-right text-sm font-medium">
-          Total Expenses: ₹ {expenseTotal} • Net (Hospital Share - Referrals - Expenses): ₹{" "}
-          {Math.max(0, totals.hospitalShare - totals.referralPayout - expenseTotal)}
         </div>
       </Card>
     </div>

@@ -14,6 +14,7 @@ const nav = [
   { href: "/all-records", label: "All Records" },
   { href: "/references", label: "References" },
   { href: "/reports", label: "Reports" },
+  { href: "/expenses", label: "Expenses" },
 ]
 
 export function Sidebar() {
