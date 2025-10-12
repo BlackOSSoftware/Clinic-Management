@@ -17,6 +17,7 @@ export type Patient = {
   phone: string
   age: number
   gender: "Male" | "Female" | "Other"
+  weight: number
   address: string
   doctorId: string
   dateISO: string

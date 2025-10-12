@@ -21,6 +21,7 @@ type FormState = {
   phone: string
   age: string
   gender: "Male" | "Female" | "Other"
+  weight: string
   address: string
   doctorId: string
   reference?: string
@@ -46,6 +47,7 @@ export default function PatientsPage() {
     phone: "",
     age: "",
     gender: "Male",
+    weight: "",
     address: "",
     doctorId: store.doctors[0]?.id ?? "",
     reference: "",
@@ -117,20 +119,17 @@ export default function PatientsPage() {
 
     const appointmentDateTime = new Date(`${form.appointmentDate}T${form.appointmentTime}:00`).toISOString()
 
-    // find today's existing patients
-    const todayPatients = store.patients.filter(
-      (p) => p.dateISO.slice(0, 10) === todayDate
-    )
-
-    // find next number
-    const nextNumber = todayPatients.length > 0
-      ? Math.max(...todayPatients.map((p) => p.appointmentNumber || 0)) + 1
-      : 1
+    // find next number globally (not just today's)
+    const nextNumber =
+      store.patients.length > 0
+        ? Math.max(...store.patients.map((p) => p.appointmentNumber || 0)) + 1
+        : 1
 
     const patient = addPatient({
       name: form.name,
       phone: form.phone,
       age: Number(form.age || 0),
+      weight: Number(form.weight || 0),
       gender: form.gender,
       address: form.address,
       doctorId: form.doctorId,
@@ -138,9 +137,8 @@ export default function PatientsPage() {
       discountPercent: Number(form.discountPercent || 0),
       referralPercent: form.referralPercent ? Number(form.referralPercent) : undefined,
       dateISO: appointmentDateTime,
-      appointmentNumber: nextNumber, // add this new field
+      appointmentNumber: nextNumber, // 👈 Unique incremental number
     })
-
 
     if (form.addService && form.serviceId) {
       addServiceRecord(form.serviceId, patient.id, undefined, appointmentDateTime, form.doctorId)
@@ -150,11 +148,13 @@ export default function PatientsPage() {
       addLabRecord(form.labTestId, patient.id, undefined, appointmentDateTime, form.doctorId)
     }
 
+    // Reset form
     setForm((s) => ({
       ...s,
       name: "",
       phone: "",
       age: "",
+      weight: "",
       address: "",
       reference: "",
       discountPercent: "",
@@ -168,6 +168,7 @@ export default function PatientsPage() {
     }))
     setLookup("")
   }
+
 
   function submitReferral() {
     if (!referralDialog.patientId) return
@@ -205,6 +206,7 @@ export default function PatientsPage() {
                       phone: p.phone,
                       age: String(p.age || ""),
                       gender: p.gender,
+                      weight: String(p.weight || ""),
                       address: p.address,
                       doctorId: p.doctorId,
                       reference: p.reference || "",
@@ -248,6 +250,15 @@ export default function PatientsPage() {
                 type="number"
                 value={form.age}
                 onChange={(e) => setForm({ ...form, age: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="age">Weight</Label>
+              <Input
+                id="weight"
+                type="number"
+                value={form.weight}
+                onChange={(e) => setForm({ ...form, weight: e.target.value })}
               />
             </div>
           </div>
@@ -443,6 +454,12 @@ export default function PatientsPage() {
                 onChange={(e) => setPatientForm({ ...patientForm, age: Number(e.target.value) })}
               />
               <Input
+                placeholder="weight"
+                type="number"
+                value={patientForm.weight?.toString() || ""}
+                onChange={(e) => setPatientForm({ ...patientForm, weight: Number(e.target.value) })}
+              />
+              <Input
                 placeholder="Address"
                 value={patientForm.address || ""}
                 onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })}
@@ -493,10 +510,11 @@ export default function PatientsPage() {
           <table className="min-w-[1050px] w-full text-sm border-collapse">
             <thead className="bg-muted sticky top-0 z-10">
               <tr className="text-xs font-medium border-b border-border">
-                {!showAll && <th className="p-2 text-left w-[60px]">No.</th>}
+                <th className="p-2 text-left w-[60px]">No.</th>
                 <th className="p-2 text-left w-[100px]">ID</th>
                 <th className="p-2 text-left w-[200px]">Name</th>
                 <th className="p-2 text-left w-[200px]">Age</th>
+                <th className="p-2 text-left w-[200px]">Weight</th>
                 <th className="p-2 text-left w-[140px]">Gender</th>
                 <th className="p-2 text-left w-[180px]">Doctor</th>
                 <th className="p-2 text-left w-[100px]">Fee</th>
@@ -509,10 +527,10 @@ export default function PatientsPage() {
             <tbody>
               {filtered.map((p, index) => {
                 const d = store.doctors.find((x) => x.id === p.doctorId)
-                const serialNumber = index + 1 // today's serial number
+                const serialNumber = index + 1
                 return (
                   <tr key={p.id} className="border-b border-border hover:bg-muted/40">
-                    {!showAll && <td className="p-2 text-center">{p.appointmentNumber ?? "—"}</td>}
+                    <td className="p-2 text-center">{p.appointmentNumber}</td>
                     <td className="p-2 truncate">{p.id.slice(0, 6)}</td>
                     <td className="p-2 truncate capitalize">
                       <div>{p.name} </div>
@@ -523,7 +541,8 @@ export default function PatientsPage() {
                         </div>
                       )}
                     </td>
-                      <td className="p-2 truncate">Age - {p.age} </td>
+                    <td className="p-2 truncate">Age - {p.age} </td>
+                    <td className="p-2 truncate"> {p.weight} </td>
 
                     <td className="p-2">{p.gender}</td>
                     <td className="p-2 truncate">{d?.name || "—"}</td>
