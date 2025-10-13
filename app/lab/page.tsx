@@ -8,15 +8,16 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth"
+import { uid } from "uid"
 
 export default function LabPage() {
-  const { store, addLabTest, deleteLabTest, addLabRecord, updateLabRecord } = useHCMS()
+  const { store, addLabTest, deleteLabTest, addLabRecordsBatch } = useHCMS()
   const { role } = useAuth()
   const isReception = role === "reception"
 
   const [name, setName] = useState("")
   const [price, setPrice] = useState("")
-  const [labTestId, setLabTestId] = useState(store.labTests[0]?.id ?? "")
+  const [selectedTests, setSelectedTests] = useState<string[]>([])
   const [patientId, setPatientId] = useState<string | "">("")
   const [patientName, setPatientName] = useState("")
   const [doctorId, setDoctorId] = useState<string | "">("")
@@ -27,8 +28,6 @@ export default function LabPage() {
   const [dateStr, setDateStr] = useState(today)
   const [timeStr, setTimeStr] = useState(currentTime)
 
-  const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
-
   function saveTest() {
     if (!name || !price) return
     addLabTest({ name, price: Number(price) })
@@ -36,39 +35,32 @@ export default function LabPage() {
     setPrice("")
   }
 
-  function saveRecord() {
-    if (!labTestId) return
-    const iso = dateStr && timeStr ? new Date(`${dateStr}T${timeStr}:00`).toISOString() : undefined
+  function toggleTestSelection(id: string) {
+    setSelectedTests((prev) =>
+      prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]
+    )
+  }
 
-    if (editingRecordId) {
-      updateLabRecord(editingRecordId, {
-        labTestId,
-        patientId: patientId || undefined,
-        patientName: patientName || undefined,
-        doctorId: doctorId || undefined,
-        dateISO: iso,
-      })
-      setEditingRecordId(null)
-    } else {
-      addLabRecord(labTestId, patientId || undefined, patientName || undefined, iso, doctorId || undefined)
-    }
+  function saveRecords() {
+    if (selectedTests.length === 0) return
+    const iso = dateStr && timeStr ? new Date(`${dateStr}T${timeStr}:00`).toISOString() : new Date().toISOString()
+    const groupId = uid("labgroup")
 
+    const records = selectedTests.map((tid) => ({
+      labTestId: tid,
+      patientId: patientId || undefined,
+      patientName: patientName || undefined,
+      dateISO: iso,
+      doctorId: doctorId || undefined,
+      groupId,
+    }))
+
+    addLabRecordsBatch(records)
+
+    setSelectedTests([])
     setPatientId("")
     setPatientName("")
     setDoctorId("")
-    setLabTestId(store.labTests[0]?.id ?? "")
-  }
-
-  function editRecord(record: any) {
-    setEditingRecordId(record.id)
-    setLabTestId(record.labTestId)
-    setPatientId(record.patientId || "")
-    setPatientName(record.patientName || "")
-    setDoctorId(record.doctorId || "")
-
-    const dt = new Date(record.dateISO)
-    setDateStr(dt.toISOString().slice(0, 10))
-    setTimeStr(dt.toTimeString().slice(0, 5))
   }
 
   function formatDate(isoString: string) {
@@ -81,6 +73,18 @@ export default function LabPage() {
     const ampm = hours >= 12 ? "PM" : "AM"
     const displayHours = hours % 12 || 12
     return `${day}/${month}/${year} ${displayHours}:${minutes} ${ampm}`
+  }
+
+  function getGroupedRecords() {
+    const grouped: Record<string, any[]> = {}
+    store.labRecords.forEach((r) => {
+      const key = r.groupId || r.id
+      if (!grouped[key]) grouped[key] = []
+      grouped[key].push(r)
+    })
+    return Object.values(grouped)
+      .sort((a, b) => new Date(b[0].dateISO).getTime() - new Date(a[0].dateISO).getTime())
+      .slice(0, 10)
   }
 
   return (
@@ -123,21 +127,23 @@ export default function LabPage() {
       )}
 
       <Card className="rounded-xl p-4 shadow-sm">
-        <div className="mb-3 font-semibold">{editingRecordId ? "Edit Lab Record" : "Add Lab Record"}</div>
+        <div className="mb-3 font-semibold">Add Lab Record</div>
         <div className="grid grid-cols-1 gap-3">
           <div>
-            <Label>Lab Test</Label>
-            <select
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={labTestId}
-              onChange={(e) => setLabTestId(e.target.value)}
-            >
+            <Label>Select Lab Tests</Label>
+            <div className="mt-1 rounded-md border border-input bg-background px-3 py-2 text-sm max-h-44 overflow-auto">
               {store.labTests.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name} — ₹{t.price}
-                </option>
+                <label key={t.id} className="flex items-center gap-2 py-1">
+                  <input
+                    type="checkbox"
+                    checked={selectedTests.includes(t.id)}
+                    onChange={() => toggleTestSelection(t.id)}
+                  />
+                  <span>{t.name} — ₹{t.price}</span>
+                </label>
               ))}
-            </select>
+              {store.labTests.length === 0 && <div className="text-sm text-muted-foreground">No lab tests found.</div>}
+            </div>
           </div>
 
           <div>
@@ -174,7 +180,11 @@ export default function LabPage() {
 
           <div>
             <Label>Custom Patient Name (optional)</Label>
-            <Input value={patientName} onChange={(e) => setPatientName(e.target.value)} placeholder="e.g. Sita Devi" />
+            <Input
+              value={patientName}
+              onChange={(e) => setPatientName(e.target.value)}
+              placeholder="e.g. Sita Devi"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -188,52 +198,40 @@ export default function LabPage() {
             </div>
           </div>
 
-          <Button className="bg-accent text-accent-foreground hover:opacity-90" onClick={saveRecord}>
-            {editingRecordId ? "Update Record" : "Save Record"}
+          <Button className="bg-accent text-accent-foreground hover:opacity-90" onClick={saveRecords}>
+            Save Records
           </Button>
-
-          {editingRecordId && (
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setEditingRecordId(null)
-                setPatientId("")
-                setPatientName("")
-                setDoctorId("")
-                setLabTestId(store.labTests[0]?.id ?? "")
-              }}
-            >
-              Cancel Edit
-            </Button>
-          )}
         </div>
 
         <div className="mt-6">
           <div className="mb-2 font-medium">Recent Lab Records</div>
           <div className="rounded-lg border border-border">
-            {store.labRecords.slice(0, 10).map((r) => {
-              const t = store.labTests.find((x) => x.id === r.labTestId)
-              const p = store.patients.find((x) => x.id === r.patientId)
-              const d = store.doctors.find((x) => x.id === r.doctorId)
-              const displayName = p?.name || r.patientName || "(General)"
-              const dateLabel = formatDate(r.dateISO)
+            {getGroupedRecords().map((records) => {
+              const first = records[0]
+              const p = store.patients.find((x) => x.id === first.patientId)
+              const d = store.doctors.find((x) => x.id === first.doctorId)
+              const displayName = p?.name || first.patientName || "(General)"
+              const dateLabel = formatDate(first.dateISO)
               return (
-                <div key={r.id} className="flex items-center justify-between border-b border-border px-3 py-2 text-sm">
-                  <div className="truncate">
-                    {t?.name} → {displayName} — ₹{r.total} • {dateLabel}
-                    {d ? <span className="ml-2 text-xs text-muted-foreground">({d.name})</span> : null}
+                <div key={first.groupId || first.id} className="border-b border-border px-3 py-2 text-sm">
+                  <div className="font-medium">
+                    {displayName} • {dateLabel}{" "}
+                    {d && <span className="ml-2 text-xs text-muted-foreground">({d.name})</span>}
                   </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => editRecord(r)}>
-                      Edit
-                    </Button>
-                    <Link
-                      href={`/print/receipt?kind=lab&id=${r.id}`}
-                      className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
-                    >
-                      Print Receipt
-                    </Link>
-                  </div>
+
+                  <ul className="ml-4 list-disc text-xs text-muted-foreground">
+                    {records.map((r) => {
+                      const t = store.labTests.find((x) => x.id === r.labTestId)
+                      return <li key={r.id}>{t?.name} — ₹{r.total}</li>
+                    })}
+                  </ul>
+
+                  <Link
+                    href={`/print/receipt?kind=lab&id=${first.groupId ?? first.id}`}
+                    className="mt-2 inline-block rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
+                  >
+                    Print Receipt
+                  </Link>
                 </div>
               )
             })}

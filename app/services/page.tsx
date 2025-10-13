@@ -10,18 +10,21 @@ import Link from "next/link"
 import { useAuth } from "@/lib/auth"
 
 export default function ServicesPage() {
-  const { store, addService, deleteService, addServiceRecord, updateService } = useHCMS()
+  const { store, addService, deleteService, addServiceRecordsBatch , updateService } = useHCMS()
   const { role } = useAuth()
   const isReception = role === "reception"
+
   const [name, setName] = useState("")
   const [price, setPrice] = useState("")
-  const [serviceId, setServiceId] = useState(store.services[0]?.id ?? "")
-  const [patientId, setPatientId] = useState<string | "">("")
-  const [patientName, setPatientName] = useState("")
-  const [doctorId, setDoctorId] = useState<string | "">("")
   const [editId, setEditId] = useState<string | null>(null)
   const [editName, setEditName] = useState("")
   const [editPrice, setEditPrice] = useState("")
+
+  // Record form states
+  const [selectedServices, setSelectedServices] = useState<string[]>([]) // multiple services
+  const [patientId, setPatientId] = useState<string | "">("")
+  const [patientName, setPatientName] = useState("")
+  const [doctorId, setDoctorId] = useState<string | "">("")
 
   const now = new Date()
   const today = now.toISOString().slice(0, 10)
@@ -29,6 +32,7 @@ export default function ServicesPage() {
   const [dateStr, setDateStr] = useState(today)
   const [timeStr, setTimeStr] = useState(currentTime)
 
+  // ----- SERVICES CRUD -----
   function saveService() {
     if (!name || !price) return
     addService({ name, price: Number(price) })
@@ -50,67 +54,95 @@ export default function ServicesPage() {
     setEditPrice("")
   }
 
-  function addRecord() {
-    if (!serviceId) {
-      alert("Please select a service.")
-      return
-    }
+  // ----- RECORD CREATION -----
+  function toggleServiceSelection(id: string) {
+    setSelectedServices((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    )
+  }
 
-    const service = store.services.find((s) => s.id === serviceId)
-    if (!service) {
-      alert("Selected service not found.")
+  function addRecord() {
+    if (selectedServices.length === 0) {
+      alert("Please select at least one service.")
       return
     }
 
     // Validate patient
-    let validPatientId: string | undefined = undefined
+    let validPatientId: string | undefined
     if (patientId) {
       const foundPatient = store.patients.find((p) => p.id === patientId)
       if (!foundPatient) {
-        alert("Selected patient not found. Please select a valid patient.")
+        alert("Selected patient not found.")
         return
       }
       validPatientId = foundPatient.id
     }
 
     // Validate doctor
-    let validDoctorId: string | undefined = undefined
+    let validDoctorId: string | undefined
     if (doctorId) {
       const foundDoctor = store.doctors.find((d) => d.id === doctorId)
       if (!foundDoctor) {
-        alert("Selected doctor not found. Please select a valid doctor.")
+        alert("Selected doctor not found.")
         return
       }
       validDoctorId = foundDoctor.id
     }
 
-    const iso =
-      dateStr && timeStr ? new Date(`${dateStr}T${timeStr}:00`).toISOString() : undefined
+    const iso = dateStr && timeStr ? new Date(`${dateStr}T${timeStr}:00`).toISOString() : undefined
+    const groupId = `grp_${Date.now()}` // group ID to link multiple services
 
-    addServiceRecord(
-      serviceId,
-      validPatientId,
-      patientName || undefined,
-      iso,
-      validDoctorId
-    )
+    const records = selectedServices.map((sid) => ({
+  serviceId: sid,
+  patientId: validPatientId,
+  patientName: patientName || undefined,
+  dateISO: iso,
+  doctorId: validDoctorId,
+  groupId,
+}))
 
+// Batch insert all at once (new helper)
+addServiceRecordsBatch(records)
+
+
+    setSelectedServices([])
     setPatientId("")
     setPatientName("")
     setDoctorId("")
   }
 
-  function formatDate(isoString: string) {
-  const date = new Date(isoString)
-  const day = String(date.getDate()).padStart(2, "0")
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const year = date.getFullYear()
-  const hours = date.getHours()
-  const minutes = String(date.getMinutes()).padStart(2, "0")
-  const ampm = hours >= 12 ? "PM" : "AM"
-  const displayHours = hours % 12 || 12
-  return `${day}/${month}/${year} ${displayHours}:${minutes} ${ampm}`
-}
+  function formatDate(isoString: string | undefined) {
+    if (!isoString) return ""
+    const date = new Date(isoString)
+    const day = String(date.getDate()).padStart(2, "0")
+    const month = String(date.getMonth() + 1).padStart(2, "0")
+    const year = date.getFullYear()
+    const hours = date.getHours()
+    const minutes = String(date.getMinutes()).padStart(2, "0")
+    const ampm = hours >= 12 ? "PM" : "AM"
+    const displayHours = hours % 12 || 12
+    return `${day}/${month}/${year} ${displayHours}:${minutes} ${ampm}`
+  }
+
+  // Helper: group serviceRecords by groupId (fallback to record id)
+  function getGroupedRecords(limit = 10) {
+    const grouped = store.serviceRecords.reduce((acc: Record<string, any[]>, r: any) => {
+      const key = r.groupId || r.id
+      if (!acc[key]) acc[key] = []
+      acc[key].push(r)
+      return acc
+    }, {})
+
+    const groups = Object.values(grouped)
+      .sort((a: any[], b: any[]) => {
+        const ad = a[0]?.dateISO ? new Date(a[0].dateISO).getTime() : 0
+        const bd = b[0]?.dateISO ? new Date(b[0].dateISO).getTime() : 0
+        return bd - ad
+      })
+      .slice(0, limit)
+
+    return groups
+  }
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -134,7 +166,7 @@ export default function ServicesPage() {
           <div className="mt-6">
             <div className="mb-2 font-medium">Services</div>
             <div className="rounded-lg border border-border">
-              {store.services.map((s) => (
+              {store.services.map((s: any) => (
                 <div
                   key={s.id}
                   className="flex items-center justify-between border-b border-border px-3 py-2 text-sm"
@@ -205,19 +237,21 @@ export default function ServicesPage() {
         <div className="mb-3 font-semibold">Add Service Record</div>
         <div className="grid grid-cols-1 gap-3">
           <div>
-            <Label>Service</Label>
-            <select
-              className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={serviceId}
-              onChange={(e) => setServiceId(e.target.value)}
-            >
-              {store.services.map((s) => (
-                <option key={s.id} value={s.id}>
+            <Label>Select Services (multiple)</Label>
+            <div className="rounded-md border border-input bg-background p-2">
+              {store.services.map((s: any) => (
+                <label key={s.id} className="flex items-center gap-2 py-1 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedServices.includes(s.id)}
+                    onChange={() => toggleServiceSelection(s.id)}
+                  />
                   {s.name} — ₹{s.price}
-                </option>
+                </label>
               ))}
-            </select>
+            </div>
           </div>
+
           <div>
             <Label>Attach to Patient (optional)</Label>
             <select
@@ -226,7 +260,7 @@ export default function ServicesPage() {
               onChange={(e) => setPatientId(e.target.value)}
             >
               <option value="">General Service</option>
-              {store.patients.map((p) => (
+              {store.patients.map((p: any) => (
                 <option key={p.id} value={p.id}>
                   {p.name} ({p.phone})
                 </option>
@@ -241,7 +275,7 @@ export default function ServicesPage() {
               onChange={(e) => setDoctorId(e.target.value)}
             >
               <option value="">No Doctor</option>
-              {store.doctors.map((d) => (
+              {store.doctors.map((d: any) => (
                 <option key={d.id} value={d.id}>
                   {d.name} — {d.specialization}
                 </option>
@@ -266,43 +300,71 @@ export default function ServicesPage() {
               <Input type="time" value={timeStr} onChange={(e) => setTimeStr(e.target.value)} />
             </div>
           </div>
+
           <Button className="bg-accent text-accent-foreground hover:opacity-90" onClick={addRecord}>
-            Save Record
+            Save Record(s)
           </Button>
         </div>
 
         <div className="mt-6">
           <div className="mb-2 font-medium">Recent Service Records</div>
           <div className="rounded-lg border border-border">
-            {store.serviceRecords.slice(0, 10).map((r) => {
-              const s = store.services.find((x) => x.id === r.serviceId)
-              const p = store.patients.find((x) => x.id === r.patientId)
-              const d = store.doctors.find((x) => x.id === r.doctorId)
-              const displayName = p?.name || r.patientName || "(General)"
-              const dateLabel = formatDate(r.dateISO)
-              return (
-                <div
-                  key={r.id}
-                  className="flex items-center justify-between border-b border-border px-3 py-2 text-sm"
-                >
-                  <div className="truncate">
-                    {s?.name} → {displayName} — ₹{r.total} • {dateLabel}
-                    {d ? (
-                      <span className="ml-2 text-xs text-muted-foreground">({d.name})</span>
-                    ) : null}
-                  </div>
-                  <Link
-                    href={`/print/receipt?kind=service&id=${r.id}`}
-                    className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
+            {(() => {
+              const groups = getGroupedRecords(10)
+
+              if (groups.length === 0) {
+                return (
+                  <div className="p-4 text-sm text-muted-foreground">No records.</div>
+                )
+              }
+
+              return groups.map((records: any[]) => {
+                const first = records[0]
+                const p = store.patients.find((x: any) => x.id === first.patientId)
+                const d = store.doctors.find((x: any) => x.id === first.doctorId)
+                const displayName = p?.name || first.patientName || "(General)"
+                const dateLabel = formatDate(first.dateISO)
+                const groupKey = first.groupId || first.id
+
+                // calculate group total
+                const groupTotal = records.reduce((sum, r) => sum + (r.total || 0), 0)
+
+                return (
+                  <div
+                    key={groupKey}
+                    className="border-b border-border px-3 py-2 text-sm"
                   >
-                    Print Receipt
-                  </Link>
-                </div>
-              )
-            })}
-            {store.serviceRecords.length === 0 && (
-              <div className="p-4 text-sm text-muted-foreground">No records.</div>
-            )}
+                    <div className="flex items-center justify-between">
+                      <div className="truncate">
+                        <span className="font-medium">{displayName}</span> — {dateLabel}
+                        {d ? (
+                          <span className="ml-2 text-xs text-muted-foreground">({d.name})</span>
+                        ) : null}
+                      </div>
+                      <div className="text-sm">₹ {groupTotal}</div>
+                    </div>
+
+                    <ul className="ml-4 mt-1 mb-2 list-disc text-xs text-muted-foreground">
+                      {records.map((r) => {
+                        const s = store.services.find((x: any) => x.id === r.serviceId)
+                        return (
+                          <li key={r.id}>
+                            {s?.name || "(Service)"} — ₹{r.total}
+                          </li>
+                        )
+                      })}
+                    </ul>
+
+                    <Link
+                      href={`/print/receipt?kind=service&id=${first.groupId ?? first.id}`}
+                      className="rounded-md bg-secondary px-2 py-1 text-xs text-secondary-foreground hover:opacity-90"
+                    >
+                      Print Receipt
+                    </Link>
+                  </div>
+                )
+              })
+            })()}
           </div>
         </div>
       </Card>

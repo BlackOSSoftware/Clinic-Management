@@ -164,9 +164,9 @@ export default function PrintPrescriptionPage() {
                 <Stethoscope size={28} />
               </div>
               <div>
-                <div className="hospital-name text-lg font-bold">CityCare Hospital</div>
+                <div className="hospital-name text-lg font-bold">JANTA POLYCLINIC</div>
                 <div className="text-sm text-gray-500">
-                  123 Health St, Wellness City
+                 
                 </div>
               </div>
             </div>

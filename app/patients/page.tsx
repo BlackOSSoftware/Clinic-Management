@@ -36,7 +36,7 @@ type FormState = {
 }
 
 export default function PatientsPage() {
-  const { store, addPatient, updatePatient, addServiceRecord, addLabRecord } = useHCMS()
+  const { store, addPatient, updatePatient, addServiceRecordsBatch, addLabRecordsBatch } = useHCMS()
 
   const now = new Date()
   const todayDate = now.toISOString().slice(0, 10)
@@ -140,13 +140,9 @@ export default function PatientsPage() {
       appointmentNumber: nextNumber, // 👈 Unique incremental number
     })
 
-    if (form.addService && form.serviceId) {
-      addServiceRecord(form.serviceId, patient.id, undefined, appointmentDateTime, form.doctorId)
-    }
+    
 
-    if (form.addLab && form.labTestId) {
-      addLabRecord(form.labTestId, patient.id, undefined, appointmentDateTime, form.doctorId)
-    }
+    
 
     // Reset form
     setForm((s) => ({
@@ -601,7 +597,7 @@ export default function PatientsPage() {
                                   id="refHospital"
                                   value={referralHospital}
                                   onChange={(e) => setReferralHospital(e.target.value)}
-                                  placeholder="e.g. CityCare Hospital"
+                                  placeholder="e.g. JANTA POLYCLINIC"
                                 />
                               </div>
                               <Button onClick={submitReferral} className="w-full">

@@ -47,6 +47,7 @@ export type ServiceRecord = {
   patientId?: string
   patientName?: string
   doctorId?: string
+    groupId?: string 
   total: number
   doctorShare?: number
   hospitalShare?: number
@@ -65,10 +66,12 @@ export type LabRecord = {
   patientId?: string
   patientName?: string
   doctorId?: string
+  groupId?: string   // <-- add this
   total: number
   doctorShare?: number
   hospitalShare?: number
 }
+
 
 export type Expense = {
   id: string
@@ -226,44 +229,34 @@ export function useHCMS() {
     },
 
 
-    addServiceRecord: (
-      serviceId: string,
-      patientId?: string,
-      patientName?: string,
-      dateISO?: string,
-      doctorId?: string,
-    ) => {
-      const service = store.services.find((s) => s.id === serviceId)
-      const total = service?.price ?? 0
+   addServiceRecordsBatch: (records: {
+  serviceId: string
+  patientId?: string
+  patientName?: string
+  dateISO?: string
+  doctorId?: string
+  groupId?: string
+}[]) => {
+  const newRecords = records.map((r) => {
+    const service = store.services.find((s) => s.id === r.serviceId)
+    const total = service?.price ?? 0
+    return {
+      id: uid("srec"),
+      dateISO: r.dateISO || new Date().toISOString(),
+      serviceId: r.serviceId,
+      patientId: r.patientId,
+      patientName: r.patientName,
+      doctorId: r.doctorId,
+      groupId: r.groupId,
+      total,
+    }
+  })
 
-      const patient = patientId ? store.patients.find((p) => p.id === patientId) : undefined
-      const finalDoctorId = doctorId || patient?.doctorId
-      const finalPatientName = patientName || patient?.name
+  const next = { ...store, serviceRecords: [...newRecords, ...store.serviceRecords] }
+  persist(next)
+  return newRecords
+},
 
-      let doctorShare: number | undefined
-      let hospitalShare: number | undefined
-      if (finalDoctorId) {
-        const doc = store.doctors.find((d) => d.id === finalDoctorId)
-        const pct = doc?.doctorSharePercent ?? 0
-        doctorShare = Math.round((total * pct) / 100)
-        hospitalShare = total - doctorShare
-      }
-
-      const rec: ServiceRecord = {
-        id: uid("srec"),
-        dateISO: dateISO || new Date().toISOString(),
-        serviceId,
-        patientId,
-        patientName: finalPatientName,
-        doctorId: finalDoctorId,
-        total,
-        doctorShare,
-        hospitalShare,
-      }
-      const next = { ...store, serviceRecords: [rec, ...store.serviceRecords] }
-      persist(next)
-      return rec
-    },
 
     updateServiceRecord: (id: string, patch: Partial<ServiceRecord>) => {
       const next = {
@@ -285,44 +278,51 @@ export function useHCMS() {
       persist(next)
     },
 
-    addLabRecord: (
-      labTestId: string,
-      patientId?: string,
-      patientName?: string,
-      dateISO?: string,
-      doctorId?: string,
-    ) => {
-      const test = store.labTests.find((t) => t.id === labTestId)
-      const total = test?.price ?? 0
+   addLabRecordsBatch: (records: {
+  labTestId: string
+  patientId?: string
+  patientName?: string
+  dateISO?: string
+  doctorId?: string
+  groupId?: string
+}[]) => {
+  const newRecords = records.map((r) => {
+    const test = store.labTests.find((t) => t.id === r.labTestId)
+    const total = test?.price ?? 0
 
-      const patient = patientId ? store.patients.find((p) => p.id === patientId) : undefined
-      const finalDoctorId = doctorId || patient?.doctorId
-      const finalPatientName = patientName || patient?.name
+    const patient = r.patientId ? store.patients.find((p) => p.id === r.patientId) : undefined
+    const finalDoctorId = r.doctorId || patient?.doctorId
+    const finalPatientName = r.patientName || patient?.name
 
-      let doctorShare: number | undefined
-      let hospitalShare: number | undefined
-      if (finalDoctorId) {
-        const doc = store.doctors.find((d) => d.id === finalDoctorId)
-        const pct = doc?.doctorSharePercent ?? 0
-        doctorShare = Math.round((total * pct) / 100)
-        hospitalShare = total - doctorShare
-      }
+    let doctorShare: number | undefined
+    let hospitalShare: number | undefined
+    if (finalDoctorId) {
+      const doc = store.doctors.find((d) => d.id === finalDoctorId)
+      const pct = doc?.doctorSharePercent ?? 0
+      doctorShare = Math.round((total * pct) / 100)
+      hospitalShare = total - doctorShare
+    }
 
-      const rec: LabRecord = {
-        id: uid("lrec"),
-        dateISO: dateISO || new Date().toISOString(),
-        labTestId,
-        patientId,
-        patientName: finalPatientName,
-        doctorId: finalDoctorId,
-        total,
-        doctorShare,
-        hospitalShare,
-      }
-      const next = { ...store, labRecords: [rec, ...store.labRecords] }
-      persist(next)
-      return rec
-    },
+    return {
+      id: uid("lrec"),
+      dateISO: r.dateISO || new Date().toISOString(),
+      labTestId: r.labTestId,
+      patientId: r.patientId,
+      patientName: finalPatientName,
+      doctorId: finalDoctorId,
+      groupId: r.groupId,
+      total,
+      doctorShare,
+      hospitalShare,
+    }
+  })
+
+  const next = { ...store, labRecords: [...newRecords, ...store.labRecords] }
+  persist(next)
+  return newRecords
+},
+
+
 
     updateLabRecord: (id: string, patch: Partial<LabRecord>) => {
       const next = {
